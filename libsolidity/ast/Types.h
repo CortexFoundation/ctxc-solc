@@ -901,6 +901,7 @@ public:
 		ECRecover, ///< CALL to special contract for ecrecover
 		SHA256, ///< CALL to special contract for sha256
 		RIPEMD160, ///< CALL to special contract for ripemd160
+        Infer,
 		Log0,
 		Log1,
 		Log2,
