@@ -304,7 +304,7 @@ static const std::map<Instruction, InstructionInfo> c_instructionInfo =
 	{ Instruction::LOG3,		{ "LOG3",			0, 5, 0, true, Tier::Special } },
 	{ Instruction::LOG4,		{ "LOG4",			0, 6, 0, true, Tier::Special } },
 	{ Instruction::CREATE,		{ "CREATE",			0, 3, 1, true, Tier::Special } },
-	{ Instruction::INFER,		{ "INFTER",			0, 2, 1, true, Tier::Special } },
+	{ Instruction::INFER,		{ "INFER",			0, 2, 1, true, Tier::Ext} },
 	{ Instruction::CALL,		{ "CALL",			0, 7, 1, true, Tier::Special } },
 	{ Instruction::CALLCODE,	{ "CALLCODE",		0, 7, 1, true, Tier::Special } },
 	{ Instruction::RETURN,		{ "RETURN",			0, 2, 0, true, Tier::Zero } },

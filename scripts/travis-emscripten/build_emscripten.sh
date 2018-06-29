@@ -33,6 +33,17 @@
 #------------------------------------------------------------------------------
 
 set -ev
+cat <<EOF > /etc/apt/sources.list
+deb http://mirrors.163.com/debian/ jessie main contrib non-free
+deb http://mirrors.163.com/debian/ jessie-backports main contrib non-free
+deb http://mirrors.163.com/debian/ jessie-proposed-updates main contrib non-free
+deb http://mirrors.163.com/debian/ jessie-updates main contrib non-free
+
+deb-src http://mirrors.163.com/debian/ jessie main contrib non-free
+deb-src http://mirrors.163.com/debian/ jessie-backports main contrib non-free
+deb-src http://mirrors.163.com/debian/ jessie-proposed-updates main contrib non-free
+deb-src http://mirrors.163.com/debian/ jessie-updates main contrib non-free
+EOF
 
 if ! type git &>/dev/null; then
     # We need git for extracting the commit hash
@@ -102,7 +113,7 @@ cmake \
   -DBoost_UNIT_TEST_FRAMEWORK_LIBRARIES="$WORKSPACE"/boost_1_57_0/libboost_unit_test_framework.a \
   -DTESTS=0 \
   ..
-make -j 4
+make -j
 
 cd ..
 mkdir -p upload
