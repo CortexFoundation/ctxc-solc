@@ -170,6 +170,7 @@ bool SemanticInformation::movable(Instruction _instruction)
 	switch (_instruction)
 	{
 	case Instruction::KECCAK256:
+	case Instruction::INFER:
 	case Instruction::BALANCE:
 	case Instruction::EXTCODESIZE:
 	case Instruction::RETURNDATASIZE:

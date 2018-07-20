@@ -812,6 +812,10 @@ bool ExpressionCompiler::visit(FunctionCall const& _functionCall)
 			break;
 		}
 		case FunctionType::Kind::Infer:
+			arguments[1]->accept(*this);
+			utils().convertType(*arguments[1]->annotation().type, IntegerType(160, IntegerType::Modifier::Address), true);
+			arguments[0]->accept(*this);
+			utils().convertType(*arguments[0]->annotation().type, IntegerType(160, IntegerType::Modifier::Address), true);
 			m_context << Instruction::INFER;
             break;
 		case FunctionType::Kind::ECRecover:

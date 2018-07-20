@@ -1,0 +1,120 @@
+/Applications/CLion.app/Contents/bin/cmake/bin/cmake -DCMAKE_BUILD_TYPE=Debug -G "CodeBlocks - Unix Makefiles" /Users/lizhen/Documents/GitHub/ctxc-solc
+CMake Deprecation Warning at cmake/EthPolicy.cmake:12 (cmake_policy):
+  The OLD behavior for policy CMP0028 will be removed from a future version
+  of CMake.
+
+  The cmake-policies(7) manual explains that the OLD behaviors of all
+  policies are deprecated and that a policy should be set to OLD only under
+  specific short-term circumstances.  Projects should be ported to the NEW
+  behavior and not rely on setting a policy to OLD.
+Call Stack (most recent call first):
+  CMakeLists.txt:8 (eth_policy)
+
+
+-- The C compiler identification is AppleClang 9.1.0.9020039
+-- The CXX compiler identification is AppleClang 9.1.0.9020039
+-- Check for working C compiler: /Library/Developer/CommandLineTools/usr/bin/cc
+-- Check for working C compiler: /Library/Developer/CommandLineTools/usr/bin/cc -- works
+-- Detecting C compiler ABI info
+-- Detecting C compiler ABI info - done
+-- Detecting C compile features
+-- Detecting C compile features - done
+-- Check for working CXX compiler: /Library/Developer/CommandLineTools/usr/bin/c++
+-- Check for working CXX compiler: /Library/Developer/CommandLineTools/usr/bin/c++ -- works
+-- Detecting CXX compiler ABI info
+-- Detecting CXX compiler ABI info - done
+-- Detecting CXX compile features
+-- Detecting CXX compile features - done
+CMake Warning at /Applications/CLion.app/Contents/bin/cmake/share/cmake-3.10/Modules/FindBoost.cmake:567 (message):
+  Imported targets and dependency information not available for Boost version
+  (all versions older than 1.33)
+Call Stack (most recent call first):
+  /Applications/CLion.app/Contents/bin/cmake/share/cmake-3.10/Modules/FindBoost.cmake:907 (_Boost_COMPONENT_DEPENDENCIES)
+  /Applications/CLion.app/Contents/bin/cmake/share/cmake-3.10/Modules/FindBoost.cmake:1542 (_Boost_MISSING_DEPENDENCIES)
+  cmake/EthDependencies.cmake:41 (find_package)
+  CMakeLists.txt:22 (include)
+
+
+CMake Warning at /Applications/CLion.app/Contents/bin/cmake/share/cmake-3.10/Modules/FindBoost.cmake:567 (message):
+  Imported targets and dependency information not available for Boost version
+  (all versions older than 1.33)
+Call Stack (most recent call first):
+  /Applications/CLion.app/Contents/bin/cmake/share/cmake-3.10/Modules/FindBoost.cmake:907 (_Boost_COMPONENT_DEPENDENCIES)
+  /Applications/CLion.app/Contents/bin/cmake/share/cmake-3.10/Modules/FindBoost.cmake:1542 (_Boost_MISSING_DEPENDENCIES)
+  cmake/EthDependencies.cmake:41 (find_package)
+  CMakeLists.txt:22 (include)
+
+
+CMake Warning at /Applications/CLion.app/Contents/bin/cmake/share/cmake-3.10/Modules/FindBoost.cmake:567 (message):
+  Imported targets and dependency information not available for Boost version
+  (all versions older than 1.33)
+Call Stack (most recent call first):
+  /Applications/CLion.app/Contents/bin/cmake/share/cmake-3.10/Modules/FindBoost.cmake:907 (_Boost_COMPONENT_DEPENDENCIES)
+  /Applications/CLion.app/Contents/bin/cmake/share/cmake-3.10/Modules/FindBoost.cmake:1542 (_Boost_MISSING_DEPENDENCIES)
+  cmake/EthDependencies.cmake:41 (find_package)
+  CMakeLists.txt:22 (include)
+
+
+CMake Warning at /Applications/CLion.app/Contents/bin/cmake/share/cmake-3.10/Modules/FindBoost.cmake:567 (message):
+  Imported targets and dependency information not available for Boost version
+  (all versions older than 1.33)
+Call Stack (most recent call first):
+  /Applications/CLion.app/Contents/bin/cmake/share/cmake-3.10/Modules/FindBoost.cmake:907 (_Boost_COMPONENT_DEPENDENCIES)
+  /Applications/CLion.app/Contents/bin/cmake/share/cmake-3.10/Modules/FindBoost.cmake:1542 (_Boost_MISSING_DEPENDENCIES)
+  cmake/EthDependencies.cmake:41 (find_package)
+  CMakeLists.txt:22 (include)
+
+
+CMake Warning at /Applications/CLion.app/Contents/bin/cmake/share/cmake-3.10/Modules/FindBoost.cmake:567 (message):
+  Imported targets and dependency information not available for Boost version
+  (all versions older than 1.33)
+Call Stack (most recent call first):
+  /Applications/CLion.app/Contents/bin/cmake/share/cmake-3.10/Modules/FindBoost.cmake:907 (_Boost_COMPONENT_DEPENDENCIES)
+  /Applications/CLion.app/Contents/bin/cmake/share/cmake-3.10/Modules/FindBoost.cmake:1542 (_Boost_MISSING_DEPENDENCIES)
+  cmake/EthDependencies.cmake:41 (find_package)
+  CMakeLists.txt:22 (include)
+
+
+CMake Error at /Applications/CLion.app/Contents/bin/cmake/share/cmake-3.10/Modules/FindBoost.cmake:1928 (message):
+  Unable to find the requested Boost libraries.
+
+  Unable to find the Boost header files.  Please set BOOST_ROOT to the root
+  directory containing Boost or BOOST_INCLUDEDIR to the directory containing
+  Boost's headers.
+Call Stack (most recent call first):
+  cmake/EthDependencies.cmake:41 (find_package)
+  CMakeLists.txt:22 (include)
+
+
+-- boost headers: Boost_INCLUDE_DIR-NOTFOUND
+-- boost lib   : 
+-- Looking for pthread.h
+-- Looking for pthread.h - found
+-- Looking for pthread_create
+-- Looking for pthread_create - found
+-- Found Threads: TRUE  
+-- Performing Test fstack-protector-strong
+-- Performing Test fstack-protector-strong - Success
+-- Performing Test Wimplicit-fallthrough
+-- Performing Test Wimplicit-fallthrough - Success
+
+------------------------------------------------------------------------
+-- Configuring solidity
+------------------------------------------------------------------------
+--                  CMake Version                            3.10.3
+-- CMAKE_BUILD_TYPE Build type                               Debug
+-- TARGET_PLATFORM  Target platform                          Darwin
+--------------------------------------------------------------- features
+-- PROFILING        Profiling support                        OFF
+------------------------------------------------------------- components
+-- TESTS            Build tests                              ON
+------------------------------------------------------------------------
+
+No SMT solver found (Z3 or CVC4). Optional SMT checking will not be available. Please install Z3 or CVC4 if it is desired.
+CMake Error: The following variables are used in this project, but they are set to NOTFOUND.
+Please set them or make sure they are set and tested correctly in the CMake files:
+/Users/lizhen/Documents/GitHub/ctxc-solc/libdevcore/Boost_INCLUDE_DIR
+   used as include directory in directory /Users/lizhen/Documents/GitHub/ctxc-solc/libdevcore
+
+-- Configuring incomplete, errors occurred!
+See also "/Users/lizhen/Documents/GitHub/ctxc-solc/cmake-build-debug/CMakeFiles/CMakeOutput.log".
