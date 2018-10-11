@@ -590,6 +590,7 @@ MemberList::MemberMap IntegerType::nativeMembers(ContractDefinition const*) cons
 			{"delegatecall", make_shared<FunctionType>(strings(), strings{"bool"}, FunctionType::Kind::BareDelegateCall, true)},
 			{"send", make_shared<FunctionType>(strings{"uint"}, strings{"bool"}, FunctionType::Kind::Send)},
 			{"infer", make_shared<FunctionType>(strings(), strings{"bool"}, FunctionType::Kind::Infer, true)},
+			{"inferArray", make_shared<FunctionType>(strings(), strings{"bool"}, FunctionType::Kind::InferArray, true)},
 			{"transfer", make_shared<FunctionType>(strings{"uint"}, strings(), FunctionType::Kind::Transfer)}
 		};
 	else
@@ -601,8 +602,8 @@ FixedPointType::FixedPointType(int _totalBits, int _fractionalDigits, FixedPoint
 {
 	solAssert(
 		8 <= m_totalBits && m_totalBits <= 256 && m_totalBits % 8 == 0 &&
-		0 <= m_fractionalDigits && m_fractionalDigits <= 80, 
-		"Invalid bit number(s) for fixed type: " + 
+		0 <= m_fractionalDigits && m_fractionalDigits <= 80,
+		"Invalid bit number(s) for fixed type: " +
 		dev::toString(_totalBits) + "x" + dev::toString(_fractionalDigits)
 	);
 }
@@ -994,7 +995,7 @@ TypePointer RationalNumberType::binaryOperatorResult(Token::Value _operator, Typ
 			}
 			else
 				value = m_value.numerator() % other.m_value.numerator();
-			break;	
+			break;
 		case Token::Exp:
 		{
 			using boost::multiprecision::pow;
@@ -1140,7 +1141,7 @@ u256 RationalNumberType::literalValue(Literal const*) const
 	// its value.
 
 	u256 value;
-	bigint shiftedValue; 
+	bigint shiftedValue;
 
 	if (!isFractional())
 		shiftedValue = m_value.numerator();
@@ -1192,7 +1193,7 @@ shared_ptr<FixedPointType const> RationalNumberType::fixedPointType() const
 	bool negative = (m_value < 0);
 	unsigned fractionalDigits = 0;
 	rational value = abs(m_value); // We care about the sign later.
-	rational maxValue = negative ? 
+	rational maxValue = negative ?
 		rational(bigint(1) << 255, 1):
 		rational((bigint(1) << 256) - 1, 1);
 
@@ -1201,7 +1202,7 @@ shared_ptr<FixedPointType const> RationalNumberType::fixedPointType() const
 		value *= 10;
 		fractionalDigits++;
 	}
-	
+
 	if (value > maxValue)
 		return shared_ptr<FixedPointType const>();
 	// This means we round towards zero for positive and negative values.
@@ -2491,6 +2492,7 @@ string FunctionType::richIdentifier() const
 	case Kind::BareCallCode: id += "barecallcode"; break;
 	case Kind::BareDelegateCall: id += "baredelegatecall"; break;
 	case Kind::Infer: id += "infer"; break;
+	case Kind::InferArray: id += "inferArray"; break;
 	case Kind::Creation: id += "creation"; break;
 	case Kind::Send: id += "send"; break;
 	case Kind::Transfer: id += "transfer"; break;
@@ -2839,6 +2841,7 @@ bool FunctionType::isBareCall() const
 	case Kind::BareCallCode:
 	case Kind::BareDelegateCall:
 	case Kind::Infer:
+	case Kind::InferArray:
 	case Kind::ECRecover:
 	case Kind::SHA256:
 	case Kind::RIPEMD160:
@@ -2882,6 +2885,7 @@ bool FunctionType::isPure() const
 		m_kind == Kind::ECRecover ||
 		m_kind == Kind::SHA256 ||
 		m_kind == Kind::Infer ||
+		m_kind == Kind::InferArray ||
 		m_kind == Kind::RIPEMD160 ||
 		m_kind == Kind::AddMod ||
 		m_kind == Kind::MulMod ||

@@ -818,6 +818,13 @@ bool ExpressionCompiler::visit(FunctionCall const& _functionCall)
 			utils().convertType(*arguments[0]->annotation().type, IntegerType(160, IntegerType::Modifier::Address), true);
 			m_context << Instruction::INFER;
             break;
+		case FunctionType::Kind::InferArray:
+			arguments[1]->accept(*this);
+			utils().convertType(*arguments[1]->annotation().type, ArrayType(DataLocation::Storage), true);
+			arguments[0]->accept(*this);
+			utils().convertType(*arguments[0]->annotation().type, IntegerType(160, IntegerType::Modifier::Address), true);
+			m_context << Instruction::INFERARRAY;
+            break;
 		case FunctionType::Kind::ECRecover:
 		case FunctionType::Kind::SHA256:
 		case FunctionType::Kind::RIPEMD160:
