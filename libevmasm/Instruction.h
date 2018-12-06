@@ -189,6 +189,8 @@ enum class Instruction: uint8_t
 
     INFER  = 0xc0,      ///< call cortex infer function
     INFERARRAY  = 0xc1,      ///< call cortex infer function
+    NNFORWARD = 0xc2,      ///< call cortex infer function
+    SOFTMAX = 0xc3,      ///< call cortex infer function
 
 	CREATE = 0xf0,		///< create a new account with associated code
 	CALL,				///< message-call into an account

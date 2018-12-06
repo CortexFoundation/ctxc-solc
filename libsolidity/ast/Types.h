@@ -903,6 +903,8 @@ public:
 		RIPEMD160, ///< CALL to special contract for ripemd160
 		Infer,/// Cortex Infer Function
 		InferArray,
+		NNForward,
+		Softmax,
 		Log0,
 		Log1,
 		Log2,
@@ -1058,7 +1060,10 @@ public:
 	ASTPointer<ASTString> documentation() const;
 
 	/// true iff arguments are to be padded to multiples of 32 bytes for external calls
-	bool padArguments() const { return !(m_kind == Kind::SHA3 || m_kind == Kind::Infer || m_kind == Kind::InferArray|| m_kind == Kind::SHA256 || m_kind == Kind::RIPEMD160 || m_kind == Kind::ABIEncodePacked); }
+	bool padArguments() const {
+        return !(m_kind == Kind::SHA3
+              || m_kind == Kind::Infer || m_kind == Kind::InferArray || m_kind == Kind::NNForward || m_kind == Kind::Softmax
+              || m_kind == Kind::SHA256 || m_kind == Kind::RIPEMD160 || m_kind == Kind::ABIEncodePacked); }
 	bool takesArbitraryParameters() const { return m_arbitraryParameters; }
 	bool gasSet() const { return m_gasSet; }
 	bool valueSet() const { return m_valueSet; }

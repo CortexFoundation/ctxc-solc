@@ -591,6 +591,8 @@ MemberList::MemberMap IntegerType::nativeMembers(ContractDefinition const*) cons
 			{"send", make_shared<FunctionType>(strings{"uint"}, strings{"bool"}, FunctionType::Kind::Send)},
 			{"infer", make_shared<FunctionType>(strings(), strings{"bool"}, FunctionType::Kind::Infer, true)},
 			{"inferArray", make_shared<FunctionType>(strings(), strings{"bool"}, FunctionType::Kind::InferArray, true)},
+			{"NNForward", make_shared<FunctionType>(strings(), strings{"bool"}, FunctionType::Kind::NNForward, true)},
+			{"Softmax", make_shared<FunctionType>(strings(), strings{"bool"}, FunctionType::Kind::Softmax, true)},
 			{"transfer", make_shared<FunctionType>(strings{"uint"}, strings(), FunctionType::Kind::Transfer)}
 		};
 	else
@@ -2493,6 +2495,8 @@ string FunctionType::richIdentifier() const
 	case Kind::BareDelegateCall: id += "baredelegatecall"; break;
 	case Kind::Infer: id += "infer"; break;
 	case Kind::InferArray: id += "inferArray"; break;
+	case Kind::NNForward: id += "nnforward"; break;
+	case Kind::Softmax: id += "softmax"; break;
 	case Kind::Creation: id += "creation"; break;
 	case Kind::Send: id += "send"; break;
 	case Kind::Transfer: id += "transfer"; break;
@@ -2842,6 +2846,8 @@ bool FunctionType::isBareCall() const
 	case Kind::BareDelegateCall:
 	case Kind::Infer:
 	case Kind::InferArray:
+	case Kind::NNForward:
+	case Kind::Softmax:
 	case Kind::ECRecover:
 	case Kind::SHA256:
 	case Kind::RIPEMD160:
@@ -2886,6 +2892,8 @@ bool FunctionType::isPure() const
 		m_kind == Kind::SHA256 ||
 		m_kind == Kind::Infer ||
 		m_kind == Kind::InferArray ||
+		m_kind == Kind::NNForward ||
+		m_kind == Kind::Softmax ||
 		m_kind == Kind::RIPEMD160 ||
 		m_kind == Kind::AddMod ||
 		m_kind == Kind::MulMod ||

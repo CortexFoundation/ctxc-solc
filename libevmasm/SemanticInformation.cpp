@@ -172,6 +172,8 @@ bool SemanticInformation::movable(Instruction _instruction)
 	case Instruction::KECCAK256:
 	case Instruction::INFER:
 	case Instruction::INFERARRAY:
+	case Instruction::NNFORWARD:
+	case Instruction::SOFTMAX:
 	case Instruction::BALANCE:
 	case Instruction::EXTCODESIZE:
 	case Instruction::RETURNDATASIZE:
