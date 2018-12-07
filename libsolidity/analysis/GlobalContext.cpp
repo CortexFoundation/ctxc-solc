@@ -45,8 +45,20 @@ m_magicVariables(vector<shared_ptr<MagicVariableDeclaration const>>{
 	make_shared<MagicVariableDeclaration>("keccak256", make_shared<FunctionType>(strings(), strings{"bytes32"}, FunctionType::Kind::SHA3, true, StateMutability::Pure)),
 	make_shared<MagicVariableDeclaration>("infer", make_shared<FunctionType>(strings{"address", "address"}, strings{"uint256"}, FunctionType::Kind::Infer)),
 	make_shared<MagicVariableDeclaration>("inferArray", make_shared<FunctionType>(strings{"address", "bytes"}, strings{"uint256"}, FunctionType::Kind::InferArray)),
-	make_shared<MagicVariableDeclaration>("nnforward", make_shared<FunctionType>(strings{"address", "bytes", "bytes memory"}, strings{"uint256"}, FunctionType::Kind::NNForward)),
-	make_shared<MagicVariableDeclaration>("softmax", make_shared<FunctionType>(strings{"bytes memory", "bytes memory"}, strings{"uint256"}, FunctionType::Kind::Softmax)),
+	make_shared<MagicVariableDeclaration>("nnforward", make_shared<FunctionType>(TypePointers{
+        make_shared<IntegerType>(160, IntegerType::Modifier::Address),
+        make_shared<ArrayType>(DataLocation::Storage),
+        make_shared<ArrayType>(DataLocation::Memory, make_shared<IntegerType>(8, IntegerType::Modifier::Signed))
+    }, TypePointers{
+        make_shared<IntegerType>(64, IntegerType::Modifier::Unsigned)
+    }, strings{}, strings{}, FunctionType::Kind::NNForward)),
+	// make_shared<MagicVariableDeclaration>("nnforward", make_shared<FunctionType>(strings{"address", "bytes", "bytes memory"}, strings{"uint256"}, FunctionType::Kind::NNForward)),
+	make_shared<MagicVariableDeclaration>("softmax", make_shared<FunctionType>(TypePointers{
+        make_shared<ArrayType>(DataLocation::Memory, make_shared<IntegerType>(8, IntegerType::Modifier::Signed)),
+        make_shared<ArrayType>(DataLocation::Memory, make_shared<IntegerType>(8, IntegerType::Modifier::Signed))
+    }, TypePointers{
+        make_shared<IntegerType>(64, IntegerType::Modifier::Unsigned)
+    }, strings{}, strings{}, FunctionType::Kind::Softmax)),
 	make_shared<MagicVariableDeclaration>("log0", make_shared<FunctionType>(strings{"bytes32"}, strings{}, FunctionType::Kind::Log0)),
 	make_shared<MagicVariableDeclaration>("log1", make_shared<FunctionType>(strings{"bytes32", "bytes32"}, strings{}, FunctionType::Kind::Log1)),
 	make_shared<MagicVariableDeclaration>("log2", make_shared<FunctionType>(strings{"bytes32", "bytes32", "bytes32"}, strings{}, FunctionType::Kind::Log2)),
