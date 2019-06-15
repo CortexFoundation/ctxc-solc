@@ -21,9 +21,11 @@ endif()
 
 # Logic here: If prereleases.txt exists but is empty, it is a non-pre release.
 # If it does not exist, create our own prerelease string
+
 if (EXISTS ${ETH_SOURCE_DIR}/prerelease.txt)
 	file(READ ${ETH_SOURCE_DIR}/prerelease.txt SOL_VERSION_PRERELEASE)
 	string(STRIP "${SOL_VERSION_PRERELEASE}" SOL_VERSION_PRERELEASE)
+  message ("strip", SOL_VERSION_PRERELEASE)
 else()
 	string(TIMESTAMP SOL_VERSION_PRERELEASE "develop.%Y.%m.%d" UTC)
 	string(REPLACE .0 . SOL_VERSION_PRERELEASE "${SOL_VERSION_PRERELEASE}")
