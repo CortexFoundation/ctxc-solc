@@ -812,6 +812,8 @@ bool ExpressionCompiler::visit(FunctionCall const& _functionCall)
 			break;
 		}
 		case FunctionType::Kind::Infer:
+			arguments[2]->accept(*this);
+			utils().convertType(*arguments[2]->annotation().type, ArrayType(DataLocation::Memory), true);
 			arguments[1]->accept(*this);
 			utils().convertType(*arguments[1]->annotation().type, IntegerType(160, IntegerType::Modifier::Address), true);
 			arguments[0]->accept(*this);
@@ -819,28 +821,30 @@ bool ExpressionCompiler::visit(FunctionCall const& _functionCall)
 			m_context << Instruction::INFER;
             break;
 		case FunctionType::Kind::InferArray:
-			arguments[1]->accept(*this);
-			utils().convertType(*arguments[1]->annotation().type, ArrayType(DataLocation::Storage), true);
-			arguments[0]->accept(*this);
-			utils().convertType(*arguments[0]->annotation().type, IntegerType(160, IntegerType::Modifier::Address), true);
-			m_context << Instruction::INFERARRAY;
-            break;
-		case FunctionType::Kind::NNForward:
 			arguments[2]->accept(*this);
 			utils().convertType(*arguments[2]->annotation().type, ArrayType(DataLocation::Memory), true);
 			arguments[1]->accept(*this);
 			utils().convertType(*arguments[1]->annotation().type, ArrayType(DataLocation::Storage), true);
 			arguments[0]->accept(*this);
 			utils().convertType(*arguments[0]->annotation().type, IntegerType(160, IntegerType::Modifier::Address), true);
-			m_context << Instruction::NNFORWARD;
+			m_context << Instruction::INFERARRAY;
             break;
-		case FunctionType::Kind::Softmax:
-			arguments[1]->accept(*this);
-			utils().convertType(*arguments[1]->annotation().type, ArrayType(DataLocation::Memory), true);
-			arguments[0]->accept(*this);
-			utils().convertType(*arguments[0]->annotation().type, ArrayType(DataLocation::Memory), true);
-			m_context << Instruction::SOFTMAX;
-            break;
+		//case FunctionType::Kind::NNForward:
+		//	arguments[2]->accept(*this);
+		//	utils().convertType(*arguments[2]->annotation().type, ArrayType(DataLocation::Memory), true);
+		//	arguments[1]->accept(*this);
+		//	utils().convertType(*arguments[1]->annotation().type, ArrayType(DataLocation::Storage), true);
+		//	arguments[0]->accept(*this);
+		//	utils().convertType(*arguments[0]->annotation().type, IntegerType(160, IntegerType::Modifier::Address), true);
+		//	m_context << Instruction::NNFORWARD;
+    //        break;
+		//case FunctionType::Kind::Softmax:
+		//	arguments[1]->accept(*this);
+		//	utils().convertType(*arguments[1]->annotation().type, ArrayType(DataLocation::Memory), true);
+		//	arguments[0]->accept(*this);
+		//	utils().convertType(*arguments[0]->annotation().type, ArrayType(DataLocation::Memory), true);
+		//	m_context << Instruction::SOFTMAX;
+    //        break;
 		case FunctionType::Kind::ECRecover:
 		case FunctionType::Kind::SHA256:
 		case FunctionType::Kind::RIPEMD160:
