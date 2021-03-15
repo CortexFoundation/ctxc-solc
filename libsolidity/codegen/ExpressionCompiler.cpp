@@ -934,16 +934,16 @@ bool ExpressionCompiler::visit(FunctionCall const& _functionCall)
 		}
 		case FunctionType::Kind::Infer:
 			arguments[1]->accept(*this);
-			utils().convertType(*arguments[1]->annotation().type, IntegerType(160, IntegerType::Modifier::Address), true);
+			utils().convertType(*arguments[1]->annotation().type, *TypeProvider::address(), true);
 			arguments[0]->accept(*this);
-			utils().convertType(*arguments[0]->annotation().type, IntegerType(160, IntegerType::Modifier::Address), true);
+			utils().convertType(*arguments[0]->annotation().type, *TypeProvider::address(), true);
 			m_context << Instruction::INFER;
             break;
 		case FunctionType::Kind::InferArray:
 			arguments[1]->accept(*this);
 			utils().convertType(*arguments[1]->annotation().type, ArrayType(DataLocation::Storage), true);
 			arguments[0]->accept(*this);
-			utils().convertType(*arguments[0]->annotation().type, IntegerType(160, IntegerType::Modifier::Address), true);
+			utils().convertType(*arguments[0]->annotation().type, *TypeProvider::address(), true);
 			m_context << Instruction::INFERARRAY;
             break;
 		case FunctionType::Kind::ECRecover:
