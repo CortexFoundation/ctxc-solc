@@ -109,6 +109,8 @@ inline vector<shared_ptr<MagicVariableDeclaration const>> constructMagicVariable
 	};
 }
 
+}
+
 GlobalContext::GlobalContext(): m_magicVariables{constructMagicVariables()}
 {
 }
