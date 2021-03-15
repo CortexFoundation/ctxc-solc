@@ -14,24 +14,28 @@
 	You should have received a copy of the GNU General Public License
 	along with solidity.  If not, see <http://www.gnu.org/licenses/>.
 */
+// SPDX-License-Identifier: GPL-3.0
 /**
  * @author Lefteris Karapetsas <lefteris@ethdev.com>
  * @date 2015
  * Unit tests for Assembly Items from evmasm/Assembly.h
  */
 
-#include <test/Options.h>
+#include <test/Common.h>
 
-#include <libevmasm/SourceLocation.h>
+#include <liblangutil/SourceLocation.h>
 #include <libevmasm/Assembly.h>
 
-#include <libsolidity/parsing/Scanner.h>
+#include <liblangutil/Scanner.h>
 #include <libsolidity/parsing/Parser.h>
+#include <libsolidity/analysis/DeclarationTypeChecker.h>
 #include <libsolidity/analysis/NameAndTypeResolver.h>
+#include <libsolidity/analysis/Scoper.h>
 #include <libsolidity/codegen/Compiler.h>
 #include <libsolidity/ast/AST.h>
 #include <libsolidity/analysis/TypeChecker.h>
-#include <libsolidity/interface/ErrorReporter.h>
+#include <libsolidity/analysis/SyntaxChecker.h>
+#include <liblangutil/ErrorReporter.h>
 
 #include <boost/test/unit_test.hpp>
 
@@ -39,53 +43,55 @@
 #include <iostream>
 
 using namespace std;
-using namespace dev::eth;
+using namespace solidity::langutil;
+using namespace solidity::evmasm;
 
-namespace dev
-{
-namespace solidity
-{
-namespace test
+namespace solidity::frontend::test
 {
 
 namespace
 {
 
-eth::AssemblyItems compileContract(string const& _sourceCode)
+evmasm::AssemblyItems compileContract(std::shared_ptr<CharStream> _sourceCode)
 {
 	ErrorList errors;
 	ErrorReporter errorReporter(errors);
-	Parser parser(errorReporter);
+	Parser parser(errorReporter, solidity::test::CommonOptions::get().evmVersion());
 	ASTPointer<SourceUnit> sourceUnit;
-	BOOST_REQUIRE_NO_THROW(sourceUnit = parser.parse(make_shared<Scanner>(CharStream(_sourceCode))));
+	BOOST_REQUIRE_NO_THROW(sourceUnit = parser.parse(make_shared<Scanner>(_sourceCode)));
 	BOOST_CHECK(!!sourceUnit);
 
-	map<ASTNode const*, shared_ptr<DeclarationContainer>> scopes;
-	NameAndTypeResolver resolver({}, scopes, errorReporter);
+	Scoper::assignScopes(*sourceUnit);
+	BOOST_REQUIRE(SyntaxChecker(errorReporter, false).checkSyntax(*sourceUnit));
+	GlobalContext globalContext;
+	NameAndTypeResolver resolver(globalContext, solidity::test::CommonOptions::get().evmVersion(), errorReporter);
+	DeclarationTypeChecker declarationTypeChecker(errorReporter, solidity::test::CommonOptions::get().evmVersion());
 	solAssert(Error::containsOnlyWarnings(errorReporter.errors()), "");
 	resolver.registerDeclarations(*sourceUnit);
+	BOOST_REQUIRE_NO_THROW(resolver.resolveNamesAndTypes(*sourceUnit));
+	if (!Error::containsOnlyWarnings(errorReporter.errors()))
+		return AssemblyItems();
+	for (ASTPointer<ASTNode> const& node: sourceUnit->nodes())
+	{
+		BOOST_REQUIRE_NO_THROW(declarationTypeChecker.check(*node));
+		if (!Error::containsOnlyWarnings(errorReporter.errors()))
+			return AssemblyItems();
+	}
+	TypeChecker checker(solidity::test::CommonOptions::get().evmVersion(), errorReporter);
+	BOOST_REQUIRE_NO_THROW(checker.checkTypeRequirements(*sourceUnit));
+	if (!Error::containsOnlyWarnings(errorReporter.errors()))
+		return AssemblyItems();
 	for (ASTPointer<ASTNode> const& node: sourceUnit->nodes())
 		if (ContractDefinition* contract = dynamic_cast<ContractDefinition*>(node.get()))
 		{
-			BOOST_REQUIRE_NO_THROW(resolver.resolveNamesAndTypes(*contract));
-			if (!Error::containsOnlyWarnings(errorReporter.errors()))
-				return AssemblyItems();
-		}
-	for (ASTPointer<ASTNode> const& node: sourceUnit->nodes())
-		if (ContractDefinition* contract = dynamic_cast<ContractDefinition*>(node.get()))
-		{
-			TypeChecker checker(dev::test::Options::get().evmVersion(), errorReporter);
-			BOOST_REQUIRE_NO_THROW(checker.checkTypeRequirements(*contract));
-			if (!Error::containsOnlyWarnings(errorReporter.errors()))
-				return AssemblyItems();
-		}
-	for (ASTPointer<ASTNode> const& node: sourceUnit->nodes())
-		if (ContractDefinition* contract = dynamic_cast<ContractDefinition*>(node.get()))
-		{
-			Compiler compiler(dev::test::Options::get().evmVersion());
-			compiler.compileContract(*contract, map<ContractDefinition const*, Assembly const*>{}, bytes());
+			Compiler compiler(
+				solidity::test::CommonOptions::get().evmVersion(),
+				RevertStrings::Default,
+				solidity::test::CommonOptions::get().optimize ? OptimiserSettings::standard() : OptimiserSettings::minimal()
+			);
+			compiler.compileContract(*contract, map<ContractDefinition const*, shared_ptr<Compiler const>>{}, bytes());
 
-			return compiler.runtimeAssemblyItems();
+			return compiler.runtimeAssembly().items();
 		}
 	BOOST_FAIL("No contract found in source.");
 	return AssemblyItems();
@@ -98,13 +104,13 @@ void printAssemblyLocations(AssemblyItems const& _items)
 		cout <<
 			"\t\tvector<SourceLocation>(" <<
 			_repetitions <<
-			", SourceLocation(" <<
+			", SourceLocation{" <<
 			_loc.start <<
 			", " <<
 			_loc.end <<
 			", make_shared<string>(\"" <<
-			*_loc.sourceName <<
-			"\"))) +" << endl;
+			_loc.source->name() <<
+			"\")}) +" << endl;
 	};
 
 	vector<SourceLocation> locations;
@@ -134,7 +140,8 @@ void checkAssemblyLocations(AssemblyItems const& _items, vector<SourceLocation> 
 	BOOST_CHECK_EQUAL(_items.size(), _locations.size());
 	for (size_t i = 0; i < min(_items.size(), _locations.size()); ++i)
 	{
-		if (_items[i].location() != _locations[i])
+		if (_items[i].location().start != _locations[i].start ||
+			_items[i].location().end != _locations[i].end)
 		{
 			BOOST_CHECK_MESSAGE(false, "Location mismatch for item " + to_string(i) + ". Found the following locations:");
 			printAssemblyLocations(_items);
@@ -150,35 +157,65 @@ BOOST_AUTO_TEST_SUITE(Assembly)
 
 BOOST_AUTO_TEST_CASE(location_test)
 {
-	char const* sourceCode = R"(
+	auto sourceCode = make_shared<CharStream>(R"(
+	pragma abicoder v1;
 	contract test {
-		function f() returns (uint256 a) {
+		function f() public returns (uint256 a) {
 			return 16;
 		}
 	}
-	)";
+	)", "");
 	AssemblyItems items = compileContract(sourceCode);
-	vector<SourceLocation> locations =
-		vector<SourceLocation>(24, SourceLocation(2, 75, make_shared<string>(""))) +
-		vector<SourceLocation>(2, SourceLocation(20, 72, make_shared<string>(""))) +
-		vector<SourceLocation>(1, SourceLocation(8, 17, make_shared<string>("--CODEGEN--"))) +
-		vector<SourceLocation>(3, SourceLocation(5, 7, make_shared<string>("--CODEGEN--"))) +
-		vector<SourceLocation>(1, SourceLocation(30, 31, make_shared<string>("--CODEGEN--"))) +
-		vector<SourceLocation>(1, SourceLocation(27, 28, make_shared<string>("--CODEGEN--"))) +
-		vector<SourceLocation>(1, SourceLocation(20, 32, make_shared<string>("--CODEGEN--"))) +
-		vector<SourceLocation>(1, SourceLocation(5, 7, make_shared<string>("--CODEGEN--"))) +
-		vector<SourceLocation>(24, SourceLocation(20, 72, make_shared<string>(""))) +
-		vector<SourceLocation>(1, SourceLocation(42, 51, make_shared<string>(""))) +
-		vector<SourceLocation>(1, SourceLocation(65, 67, make_shared<string>(""))) +
-		vector<SourceLocation>(2, SourceLocation(58, 67, make_shared<string>(""))) +
-		vector<SourceLocation>(2, SourceLocation(20, 72, make_shared<string>("")));
+	bool hasShifts = solidity::test::CommonOptions::get().evmVersion().hasBitwiseShifting();
 
+	auto codegenCharStream = make_shared<CharStream>("", "--CODEGEN--");
 
+	vector<SourceLocation> locations;
+	if (solidity::test::CommonOptions::get().optimize)
+		locations =
+			vector<SourceLocation>(31, SourceLocation{23, 103, sourceCode}) +
+			vector<SourceLocation>(1, SourceLocation{41, 100, sourceCode}) +
+			vector<SourceLocation>(1, SourceLocation{93, 95, sourceCode}) +
+			vector<SourceLocation>(15, SourceLocation{41, 100, sourceCode});
+	else
+		locations =
+			vector<SourceLocation>(hasShifts ? 31 : 32, SourceLocation{23, 103, sourceCode}) +
+			vector<SourceLocation>(24, SourceLocation{41, 100, sourceCode}) +
+			vector<SourceLocation>(1, SourceLocation{70, 79, sourceCode}) +
+			vector<SourceLocation>(1, SourceLocation{93, 95, sourceCode}) +
+			vector<SourceLocation>(2, SourceLocation{86, 95, sourceCode}) +
+			vector<SourceLocation>(2, SourceLocation{41, 100, sourceCode});
 	checkAssemblyLocations(items, locations);
 }
 
+
+BOOST_AUTO_TEST_CASE(jump_type)
+{
+	auto sourceCode = make_shared<CharStream>(R"(
+	pragma abicoder v1;
+	contract C {
+		function f(uint a) public pure returns (uint t) {
+			assembly {
+				function g(x) -> y { if x { leave } y := 8 }
+				t := g(a)
+			}
+		}
+	}
+	)", "");
+	AssemblyItems items = compileContract(sourceCode);
+
+	string jumpTypes;
+	for (AssemblyItem const& item: items)
+		if (item.getJumpType() != AssemblyItem::JumpType::Ordinary)
+			jumpTypes += item.getJumpTypeAsString() + "\n";
+
+	if (solidity::test::CommonOptions::get().optimize)
+		BOOST_CHECK_EQUAL(jumpTypes, "[in]\n[out]\n[in]\n[out]\n");
+	else
+		BOOST_CHECK_EQUAL(jumpTypes, "[in]\n[out]\n[in]\n[out]\n");
+}
+
+
 BOOST_AUTO_TEST_SUITE_END()
 
-}
-}
 } // end namespaces

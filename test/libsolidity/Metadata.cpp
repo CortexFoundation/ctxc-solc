@@ -20,17 +20,61 @@
  */
 
 #include <test/Metadata.h>
-#include <test/Options.h>
+#include <test/Common.h>
 #include <libsolidity/interface/CompilerStack.h>
-#include <libdevcore/SwarmHash.h>
-#include <libdevcore/JSON.h>
+#include <libsolidity/interface/Version.h>
+#include <libsolutil/SwarmHash.h>
+#include <libsolutil/IpfsHash.h>
+#include <libsolutil/JSON.h>
 
-namespace dev
+#include <boost/test/unit_test.hpp>
+
+using namespace std;
+
+namespace solidity::frontend::test
 {
-namespace solidity
+
+namespace
 {
-namespace test
+
+map<string, string> requireParsedCBORMetadata(bytes const& _bytecode, CompilerStack::MetadataFormat _metadataFormat)
 {
+	bytes cborMetadata = solidity::test::onlyMetadata(_bytecode);
+	if (_metadataFormat != CompilerStack::MetadataFormat::NoMetadata)
+	{
+		BOOST_REQUIRE(!cborMetadata.empty());
+		std::optional<map<string, string>> tmp = solidity::test::parseCBORMetadata(cborMetadata);
+		BOOST_REQUIRE(tmp);
+		return *tmp;
+	}
+	BOOST_REQUIRE(cborMetadata.empty());
+	return {};
+}
+
+optional<string> compileAndCheckLicenseMetadata(string const& _contractName, char const* _sourceCode)
+{
+	CompilerStack compilerStack;
+	compilerStack.setSources({{"A.sol", std::string(_sourceCode)}});
+	BOOST_REQUIRE_MESSAGE(compilerStack.compile(), "Compiling contract failed");
+
+	std::string const& serialisedMetadata = compilerStack.metadata(_contractName);
+	BOOST_CHECK(solidity::test::isValidMetadata(serialisedMetadata));
+	Json::Value metadata;
+	BOOST_REQUIRE(util::jsonParseStrict(serialisedMetadata, metadata));
+
+	BOOST_CHECK_EQUAL(metadata["sources"].size(), 1);
+	BOOST_REQUIRE(metadata["sources"].isMember("A.sol"));
+
+	if (metadata["sources"]["A.sol"].isMember("license"))
+	{
+		BOOST_REQUIRE(metadata["sources"]["A.sol"]["license"].isString());
+		return metadata["sources"]["A.sol"]["license"].asString();
+	}
+	else
+		return nullopt;
+}
+
+}
 
 BOOST_AUTO_TEST_SUITE(Metadata)
 
@@ -41,24 +85,70 @@ BOOST_AUTO_TEST_CASE(metadata_stamp)
 		pragma solidity >=0.0;
 		pragma experimental __testOnlyAnalysis;
 		contract test {
-			function g(function(uint) external returns (uint) x) {}
+			function g(function(uint) external returns (uint) x) public {}
 		}
 	)";
-	CompilerStack compilerStack;
-	compilerStack.addSource("", std::string(sourceCode));
-	compilerStack.setEVMVersion(dev::test::Options::get().evmVersion());
-	compilerStack.setOptimiserSettings(dev::test::Options::get().optimize);
-	BOOST_REQUIRE_MESSAGE(compilerStack.compile(), "Compiling contract failed");
-	bytes const& bytecode = compilerStack.runtimeObject("test").bytecode;
-	std::string const& metadata = compilerStack.metadata("test");
-	BOOST_CHECK(dev::test::isValidMetadata(metadata));
-	bytes hash = dev::swarmHash(metadata).asBytes();
-	BOOST_REQUIRE(hash.size() == 32);
-	BOOST_REQUIRE(bytecode.size() >= 2);
-	size_t metadataCBORSize = (size_t(bytecode.end()[-2]) << 8) + size_t(bytecode.end()[-1]);
-	BOOST_REQUIRE(metadataCBORSize < bytecode.size() - 2);
-	bytes expectation = bytes{0xa1, 0x65, 'b', 'z', 'z', 'r', '0', 0x58, 0x20} + hash;
-	BOOST_CHECK(std::equal(expectation.begin(), expectation.end(), bytecode.end() - metadataCBORSize - 2));
+	for (auto metadataFormat: std::set<CompilerStack::MetadataFormat>{
+		CompilerStack::MetadataFormat::NoMetadata,
+		CompilerStack::MetadataFormat::WithReleaseVersionTag,
+		CompilerStack::MetadataFormat::WithPrereleaseVersionTag
+	})
+		for (auto metadataHash: set<CompilerStack::MetadataHash>{
+			CompilerStack::MetadataHash::IPFS,
+			CompilerStack::MetadataHash::Bzzr1,
+			CompilerStack::MetadataHash::None
+		})
+		{
+			CompilerStack compilerStack;
+			compilerStack.setMetadataFormat(metadataFormat);
+			compilerStack.setSources({{"", std::string(sourceCode)}});
+			compilerStack.setEVMVersion(solidity::test::CommonOptions::get().evmVersion());
+			compilerStack.setOptimiserSettings(solidity::test::CommonOptions::get().optimize);
+			compilerStack.setMetadataHash(metadataHash);
+			BOOST_REQUIRE_MESSAGE(compilerStack.compile(), "Compiling contract failed");
+			bytes const& bytecode = compilerStack.runtimeObject("test").bytecode;
+			std::string const& metadata = compilerStack.metadata("test");
+			BOOST_CHECK(solidity::test::isValidMetadata(metadata));
+
+			auto const cborMetadata = requireParsedCBORMetadata(bytecode, metadataFormat);
+			if (metadataHash == CompilerStack::MetadataHash::None)
+				BOOST_CHECK(cborMetadata.size() == (metadataFormat == CompilerStack::MetadataFormat::NoMetadata ? 0 : 1));
+			else
+			{
+				bytes hash;
+				string hashMethod;
+				if (metadataHash == CompilerStack::MetadataHash::IPFS)
+				{
+					hash = util::ipfsHash(metadata);
+					BOOST_REQUIRE(hash.size() == 34);
+					hashMethod = "ipfs";
+				}
+				else
+				{
+					hash = util::bzzr1Hash(metadata).asBytes();
+					BOOST_REQUIRE(hash.size() == 32);
+					hashMethod = "bzzr1";
+				}
+
+				if (metadataFormat != CompilerStack::MetadataFormat::NoMetadata)
+				{
+					BOOST_CHECK(cborMetadata.size() == 2);
+					BOOST_CHECK(cborMetadata.count(hashMethod) == 1);
+					BOOST_CHECK(cborMetadata.at(hashMethod) == util::toHex(hash));
+				}
+			}
+
+			if (metadataFormat == CompilerStack::MetadataFormat::NoMetadata)
+				BOOST_CHECK(cborMetadata.count("solc") == 0);
+			else
+			{
+				BOOST_CHECK(cborMetadata.count("solc") == 1);
+				if (metadataFormat == CompilerStack::MetadataFormat::WithReleaseVersionTag)
+					BOOST_CHECK(cborMetadata.at("solc") == util::toHex(VersionCompactBytes));
+				else
+					BOOST_CHECK(cborMetadata.at("solc") == VersionStringStrict);
+			}
+		}
 }
 
 BOOST_AUTO_TEST_CASE(metadata_stamp_experimental)
@@ -68,54 +158,101 @@ BOOST_AUTO_TEST_CASE(metadata_stamp_experimental)
 		pragma solidity >=0.0;
 		pragma experimental __test;
 		contract test {
-			function g(function(uint) external returns (uint) x) {}
+			function g(function(uint) external returns (uint) x) public {}
 		}
 	)";
-	CompilerStack compilerStack;
-	compilerStack.addSource("", std::string(sourceCode));
-	compilerStack.setEVMVersion(dev::test::Options::get().evmVersion());
-	compilerStack.setOptimiserSettings(dev::test::Options::get().optimize);
-	BOOST_REQUIRE_MESSAGE(compilerStack.compile(), "Compiling contract failed");
-	bytes const& bytecode = compilerStack.runtimeObject("test").bytecode;
-	std::string const& metadata = compilerStack.metadata("test");
-	BOOST_CHECK(dev::test::isValidMetadata(metadata));
-	bytes hash = dev::swarmHash(metadata).asBytes();
-	BOOST_REQUIRE(hash.size() == 32);
-	BOOST_REQUIRE(bytecode.size() >= 2);
-	size_t metadataCBORSize = (size_t(bytecode.end()[-2]) << 8) + size_t(bytecode.end()[-1]);
-	BOOST_REQUIRE(metadataCBORSize < bytecode.size() - 2);
-	bytes expectation =
-		bytes{0xa2, 0x65, 'b', 'z', 'z', 'r', '0', 0x58, 0x20} +
-		hash +
-		bytes{0x6c, 'e', 'x', 'p', 'e', 'r', 'i', 'm', 'e', 'n', 't', 'a', 'l', 0xf5};
-	BOOST_CHECK(std::equal(expectation.begin(), expectation.end(), bytecode.end() - metadataCBORSize - 2));
+	for (auto metadataFormat: std::set<CompilerStack::MetadataFormat>{
+			CompilerStack::MetadataFormat::NoMetadata,
+			CompilerStack::MetadataFormat::WithReleaseVersionTag,
+			CompilerStack::MetadataFormat::WithPrereleaseVersionTag
+	})
+		for (auto metadataHash: set<CompilerStack::MetadataHash>{
+			CompilerStack::MetadataHash::IPFS,
+			CompilerStack::MetadataHash::Bzzr1,
+			CompilerStack::MetadataHash::None
+		})
+		{
+			CompilerStack compilerStack;
+			compilerStack.setMetadataFormat(metadataFormat);
+			compilerStack.setSources({{"", std::string(sourceCode)}});
+			compilerStack.setEVMVersion(solidity::test::CommonOptions::get().evmVersion());
+			compilerStack.setOptimiserSettings(solidity::test::CommonOptions::get().optimize);
+			compilerStack.setMetadataHash(metadataHash);
+			BOOST_REQUIRE_MESSAGE(compilerStack.compile(), "Compiling contract failed");
+			bytes const& bytecode = compilerStack.runtimeObject("test").bytecode;
+			std::string const& metadata = compilerStack.metadata("test");
+			BOOST_CHECK(solidity::test::isValidMetadata(metadata));
+
+			auto const cborMetadata = requireParsedCBORMetadata(bytecode, metadataFormat);
+			if (metadataHash == CompilerStack::MetadataHash::None)
+				BOOST_CHECK(cborMetadata.size() == (metadataFormat == CompilerStack::MetadataFormat::NoMetadata ? 0 : 2));
+			else
+			{
+				bytes hash;
+				string hashMethod;
+				if (metadataHash == CompilerStack::MetadataHash::IPFS)
+				{
+					hash = util::ipfsHash(metadata);
+					BOOST_REQUIRE(hash.size() == 34);
+					hashMethod = "ipfs";
+				}
+				else
+				{
+					hash = util::bzzr1Hash(metadata).asBytes();
+					BOOST_REQUIRE(hash.size() == 32);
+					hashMethod = "bzzr1";
+				}
+
+				if (metadataFormat != CompilerStack::MetadataFormat::NoMetadata)
+				{
+					BOOST_CHECK(cborMetadata.size() == 3);
+					BOOST_CHECK(cborMetadata.count(hashMethod) == 1);
+					BOOST_CHECK(cborMetadata.at(hashMethod) == util::toHex(hash));
+				}
+			}
+
+			if (metadataFormat == CompilerStack::MetadataFormat::NoMetadata)
+				BOOST_CHECK(cborMetadata.count("solc") == 0);
+			else
+			{
+				BOOST_CHECK(cborMetadata.count("solc") == 1);
+				if (metadataFormat == CompilerStack::MetadataFormat::WithReleaseVersionTag)
+					BOOST_CHECK(cborMetadata.at("solc") == util::toHex(VersionCompactBytes));
+				else
+					BOOST_CHECK(cborMetadata.at("solc") == VersionStringStrict);
+				BOOST_CHECK(cborMetadata.count("experimental") == 1);
+				BOOST_CHECK(cborMetadata.at("experimental") == "true");
+			}
+		}
 }
 
 BOOST_AUTO_TEST_CASE(metadata_relevant_sources)
 {
 	CompilerStack compilerStack;
-	char const* sourceCode = R"(
+	char const* sourceCodeA = R"(
 		pragma solidity >=0.0;
 		contract A {
-			function g(function(uint) external returns (uint) x) {}
+			function g(function(uint) external returns (uint) x) public {}
 		}
 	)";
-	compilerStack.addSource("A", std::string(sourceCode));
-	sourceCode = R"(
+	char const* sourceCodeB = R"(
 		pragma solidity >=0.0;
 		contract B {
-			function g(function(uint) external returns (uint) x) {}
+			function g(function(uint) external returns (uint) x) public {}
 		}
 	)";
-	compilerStack.addSource("B", std::string(sourceCode));
-	compilerStack.setEVMVersion(dev::test::Options::get().evmVersion());
-	compilerStack.setOptimiserSettings(dev::test::Options::get().optimize);
+	compilerStack.setSources({
+		{"A", std::string(sourceCodeA)},
+		{"B", std::string(sourceCodeB)},
+	});
+	compilerStack.setEVMVersion(solidity::test::CommonOptions::get().evmVersion());
+	compilerStack.setOptimiserSettings(solidity::test::CommonOptions::get().optimize);
 	BOOST_REQUIRE_MESSAGE(compilerStack.compile(), "Compiling contract failed");
 
 	std::string const& serialisedMetadata = compilerStack.metadata("A");
-	BOOST_CHECK(dev::test::isValidMetadata(serialisedMetadata));
+	BOOST_CHECK(solidity::test::isValidMetadata(serialisedMetadata));
 	Json::Value metadata;
-	BOOST_REQUIRE(jsonParseStrict(serialisedMetadata, metadata));
+	BOOST_REQUIRE(util::jsonParseStrict(serialisedMetadata, metadata));
 
 	BOOST_CHECK_EQUAL(metadata["sources"].size(), 1);
 	BOOST_CHECK(metadata["sources"].isMember("A"));
@@ -124,37 +261,39 @@ BOOST_AUTO_TEST_CASE(metadata_relevant_sources)
 BOOST_AUTO_TEST_CASE(metadata_relevant_sources_imports)
 {
 	CompilerStack compilerStack;
-	char const* sourceCode = R"(
+	char const* sourceCodeA = R"(
 		pragma solidity >=0.0;
 		contract A {
-			function g(function(uint) external returns (uint) x) {}
+			function g(function(uint) external returns (uint) x) public virtual {}
 		}
 	)";
-	compilerStack.addSource("A", std::string(sourceCode));
-	sourceCode = R"(
+	char const* sourceCodeB = R"(
 		pragma solidity >=0.0;
 		import "./A";
 		contract B is A {
-			function g(function(uint) external returns (uint) x) {}
+			function g(function(uint) external returns (uint) x) public virtual override {}
 		}
 	)";
-	compilerStack.addSource("B", std::string(sourceCode));
-	sourceCode = R"(
+	char const* sourceCodeC = R"(
 		pragma solidity >=0.0;
 		import "./B";
 		contract C is B {
-			function g(function(uint) external returns (uint) x) {}
+			function g(function(uint) external returns (uint) x) public override {}
 		}
 	)";
-	compilerStack.addSource("C", std::string(sourceCode));
-	compilerStack.setEVMVersion(dev::test::Options::get().evmVersion());
-	compilerStack.setOptimiserSettings(dev::test::Options::get().optimize);
+	compilerStack.setSources({
+		{"A", std::string(sourceCodeA)},
+		{"B", std::string(sourceCodeB)},
+		{"C", std::string(sourceCodeC)}
+	});
+	compilerStack.setEVMVersion(solidity::test::CommonOptions::get().evmVersion());
+	compilerStack.setOptimiserSettings(solidity::test::CommonOptions::get().optimize);
 	BOOST_REQUIRE_MESSAGE(compilerStack.compile(), "Compiling contract failed");
 
 	std::string const& serialisedMetadata = compilerStack.metadata("C");
-	BOOST_CHECK(dev::test::isValidMetadata(serialisedMetadata));
+	BOOST_CHECK(solidity::test::isValidMetadata(serialisedMetadata));
 	Json::Value metadata;
-	BOOST_REQUIRE(jsonParseStrict(serialisedMetadata, metadata));
+	BOOST_REQUIRE(util::jsonParseStrict(serialisedMetadata, metadata));
 
 	BOOST_CHECK_EQUAL(metadata["sources"].size(), 3);
 	BOOST_CHECK(metadata["sources"].isMember("A"));
@@ -162,8 +301,284 @@ BOOST_AUTO_TEST_CASE(metadata_relevant_sources_imports)
 	BOOST_CHECK(metadata["sources"].isMember("C"));
 }
 
+BOOST_AUTO_TEST_CASE(metadata_useLiteralContent)
+{
+	// Check that the metadata contains "useLiteralContent"
+	char const* sourceCode = R"(
+		pragma solidity >=0.0;
+		contract test {
+		}
+	)";
+
+	auto check = [](char const* _src, bool _literal)
+	{
+		CompilerStack compilerStack;
+		compilerStack.setSources({{"", std::string(_src)}});
+		compilerStack.setEVMVersion(solidity::test::CommonOptions::get().evmVersion());
+		compilerStack.setOptimiserSettings(solidity::test::CommonOptions::get().optimize);
+		compilerStack.useMetadataLiteralSources(_literal);
+		BOOST_REQUIRE_MESSAGE(compilerStack.compile(), "Compiling contract failed");
+		string metadata_str = compilerStack.metadata("test");
+		Json::Value metadata;
+		util::jsonParseStrict(metadata_str, metadata);
+		BOOST_CHECK(solidity::test::isValidMetadata(metadata_str));
+		BOOST_CHECK(metadata.isMember("settings"));
+		BOOST_CHECK(metadata["settings"].isMember("metadata"));
+		BOOST_CHECK(metadata["settings"]["metadata"].isMember("bytecodeHash"));
+		if (_literal)
+		{
+			BOOST_CHECK(metadata["settings"]["metadata"].isMember("useLiteralContent"));
+			BOOST_CHECK(metadata["settings"]["metadata"]["useLiteralContent"].asBool());
+		}
+	};
+
+	check(sourceCode, true);
+	check(sourceCode, false);
+}
+
+BOOST_AUTO_TEST_CASE(metadata_viair)
+{
+	char const* sourceCode = R"(
+		pragma solidity >=0.0;
+		contract test {
+		}
+	)";
+
+	auto check = [](char const* _src, bool _viair)
+	{
+		CompilerStack compilerStack;
+		compilerStack.setSources({{"", std::string(_src)}});
+		compilerStack.setEVMVersion(solidity::test::CommonOptions::get().evmVersion());
+		compilerStack.setOptimiserSettings(solidity::test::CommonOptions::get().optimize);
+		compilerStack.setViaIR(_viair);
+		BOOST_REQUIRE_MESSAGE(compilerStack.compile(), "Compiling contract failed");
+		string metadata_str = compilerStack.metadata("test");
+		Json::Value metadata;
+		util::jsonParseStrict(metadata_str, metadata);
+		BOOST_CHECK(solidity::test::isValidMetadata(metadata_str));
+		BOOST_CHECK(metadata.isMember("settings"));
+		if (_viair)
+		{
+			BOOST_CHECK(metadata["settings"].isMember("viaIR"));
+			BOOST_CHECK(metadata["settings"]["viaIR"].asBool());
+		}
+	};
+
+	check(sourceCode, true);
+	check(sourceCode, false);
+}
+
+BOOST_AUTO_TEST_CASE(metadata_revert_strings)
+{
+	CompilerStack compilerStack;
+	char const* sourceCodeA = R"(
+		pragma solidity >=0.0;
+		contract A {
+		}
+	)";
+	compilerStack.setSources({{"A", std::string(sourceCodeA)}});
+	compilerStack.setRevertStringBehaviour(RevertStrings::Strip);
+	BOOST_REQUIRE_MESSAGE(compilerStack.compile(), "Compiling contract failed");
+
+	std::string const& serialisedMetadata = compilerStack.metadata("A");
+	BOOST_CHECK(solidity::test::isValidMetadata(serialisedMetadata));
+	Json::Value metadata;
+	BOOST_REQUIRE(util::jsonParseStrict(serialisedMetadata, metadata));
+
+	BOOST_CHECK_EQUAL(metadata["settings"]["debug"]["revertStrings"], "strip");
+}
+
+BOOST_AUTO_TEST_CASE(metadata_license_missing)
+{
+	char const* sourceCode = R"(
+		pragma solidity >=0.0;
+		contract C {
+		}
+	)";
+	BOOST_CHECK(compileAndCheckLicenseMetadata("C", sourceCode) == nullopt);
+}
+
+BOOST_AUTO_TEST_CASE(metadata_license_gpl3)
+{
+	// Can't use a raw string here due to the stylechecker.
+	char const* sourceCode =
+		"// NOTE: we also add trailing whitespace after the license, to see it is trimmed.\n"
+		"// SPDX-License-Identifier: GPL-3.0    \n"
+		"pragma solidity >=0.0;\n"
+		"contract C {\n"
+		"}\n";
+	BOOST_CHECK(compileAndCheckLicenseMetadata("C", sourceCode) == "GPL-3.0");
+}
+
+BOOST_AUTO_TEST_CASE(metadata_license_whitespace_before_spdx)
+{
+	char const* sourceCode = R"(
+		//     SPDX-License-Identifier: GPL-3.0
+		contract C {}
+	)";
+	BOOST_CHECK(compileAndCheckLicenseMetadata("C", sourceCode) == "GPL-3.0");
+}
+
+BOOST_AUTO_TEST_CASE(metadata_license_whitespace_after_colon)
+{
+	char const* sourceCode = R"(
+		// SPDX-License-Identifier:    GPL-3.0
+		contract C {}
+	)";
+	BOOST_CHECK(compileAndCheckLicenseMetadata("C", sourceCode) == "GPL-3.0");
+}
+
+BOOST_AUTO_TEST_CASE(metadata_license_gpl3_or_apache2)
+{
+	char const* sourceCode = R"(
+		// SPDX-License-Identifier: GPL-3.0 OR Apache-2.0
+		pragma solidity >=0.0;
+		contract C {
+		}
+	)";
+	BOOST_CHECK(compileAndCheckLicenseMetadata("C", sourceCode) == "GPL-3.0 OR Apache-2.0");
+}
+
+BOOST_AUTO_TEST_CASE(metadata_license_ignored_unicode)
+{
+	char const* sourceCode = R"(
+		// SPDX-License-Identifier: ⡉⡊⡋⡌⡍⡎⡏⡐⡑⡒
+		pragma solidity >=0.0;
+		contract C {
+		}
+	)";
+	BOOST_CHECK(compileAndCheckLicenseMetadata("C", sourceCode) == nullopt);
+}
+
+BOOST_AUTO_TEST_CASE(metadata_license_ignored_stray_unicode)
+{
+	char const* sourceCode = R"(
+		// SPDX-License-Identifier: GPL-3.0 ⡉⡊⡋⡌⡍⡎⡏⡐⡑⡒
+		pragma solidity >=0.0;
+		contract C {
+		}
+	)";
+	BOOST_CHECK(compileAndCheckLicenseMetadata("C", sourceCode) == "GPL-3.0");
+}
+
+BOOST_AUTO_TEST_CASE(metadata_license_bidi_marks)
+{
+	char const* sourceCode =
+		"// \xE2\x80\xAE""0.3-LPG :reifitnedI-esneciL-XDPS\xE2\x80\xAC\n"
+		"// NOTE: The text above is reversed using Unicode directional marks. In raw form it would look like this:\n"
+		"// <LRO>0.3-LPG :reifitnedI-esneciL-XDPS<PDF>\n"
+		"contract C {}\n";
+	BOOST_CHECK(compileAndCheckLicenseMetadata("C", sourceCode) == nullopt);
+}
+
+BOOST_AUTO_TEST_CASE(metadata_license_bottom)
+{
+	char const* sourceCode = R"(
+		contract C {}
+		// SPDX-License-Identifier: GPL-3.0
+	)";
+	BOOST_CHECK(compileAndCheckLicenseMetadata("C", sourceCode) == "GPL-3.0");
+}
+
+BOOST_AUTO_TEST_CASE(metadata_cr_endings)
+{
+	char const* sourceCode =
+		"// SPDX-License-Identifier: GPL-3.0\r"
+		"contract C {}\r";
+	BOOST_CHECK(compileAndCheckLicenseMetadata("C", sourceCode) == "GPL-3.0");
+}
+
+BOOST_AUTO_TEST_CASE(metadata_crlf_endings)
+{
+	char const* sourceCode =
+		"// SPDX-License-Identifier: GPL-3.0\r\n"
+		"contract C {}\r\n";
+	BOOST_CHECK(compileAndCheckLicenseMetadata("C", sourceCode) == "GPL-3.0");
+}
+
+BOOST_AUTO_TEST_CASE(metadata_license_in_string)
+{
+	char const* sourceCode = R"(
+		contract C {
+			bytes license = "// SPDX-License-Identifier: GPL-3.0";
+		}
+	)";
+	BOOST_CHECK(compileAndCheckLicenseMetadata("C", sourceCode) == nullopt);
+}
+
+BOOST_AUTO_TEST_CASE(metadata_license_in_contract)
+{
+	char const* sourceCode = R"(
+		contract C {
+		// SPDX-License-Identifier: GPL-3.0
+		}
+	)";
+	BOOST_CHECK(compileAndCheckLicenseMetadata("C", sourceCode) == nullopt);
+}
+
+BOOST_AUTO_TEST_CASE(metadata_license_missing_colon)
+{
+	char const* sourceCode = R"(
+		// SPDX-License-Identifier GPL-3.0
+		contract C {}
+	)";
+	BOOST_CHECK(compileAndCheckLicenseMetadata("C", sourceCode) == nullopt);
+}
+
+BOOST_AUTO_TEST_CASE(metadata_license_multiline)
+{
+	char const* sourceCode = R"(
+		/* SPDX-License-Identifier: GPL-3.0 */
+		contract C {}
+	)";
+	BOOST_CHECK(compileAndCheckLicenseMetadata("C", sourceCode) == "GPL-3.0");
+}
+
+BOOST_AUTO_TEST_CASE(metadata_license_natspec)
+{
+	char const* sourceCode = R"(
+		/// SPDX-License-Identifier: GPL-3.0
+		contract C {}
+	)";
+	BOOST_CHECK(compileAndCheckLicenseMetadata("C", sourceCode) == "GPL-3.0");
+}
+
+BOOST_AUTO_TEST_CASE(metadata_license_natspec_multiline)
+{
+	char const* sourceCode = R"(
+		/** SPDX-License-Identifier: GPL-3.0 */
+		contract C {}
+	)";
+	BOOST_CHECK(compileAndCheckLicenseMetadata("C", sourceCode) == "GPL-3.0");
+}
+
+BOOST_AUTO_TEST_CASE(metadata_license_no_whitespace)
+{
+	char const* sourceCode = R"(
+		//SPDX-License-Identifier:GPL-3.0
+		contract C {}
+	)";
+	BOOST_CHECK(compileAndCheckLicenseMetadata("C", sourceCode) == "GPL-3.0");
+}
+
+BOOST_AUTO_TEST_CASE(metadata_license_no_whitespace_multiline)
+{
+	char const* sourceCode = R"(
+		/*SPDX-License-Identifier:GPL-3.0*/
+		contract C {}
+	)";
+	BOOST_CHECK(compileAndCheckLicenseMetadata("C", sourceCode) == "GPL-3.0");
+}
+
+BOOST_AUTO_TEST_CASE(metadata_license_nonempty_line)
+{
+	char const* sourceCode = R"(
+		pragma solidity >= 0.0; // SPDX-License-Identifier: GPL-3.0
+		contract C {}
+	)";
+	BOOST_CHECK(compileAndCheckLicenseMetadata("C", sourceCode) == "GPL-3.0");
+}
+
 BOOST_AUTO_TEST_SUITE_END()
 
-}
-}
 }

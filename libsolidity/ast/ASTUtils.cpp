@@ -14,35 +14,57 @@
 	You should have received a copy of the GNU General Public License
 	along with solidity.  If not, see <http://www.gnu.org/licenses/>.
 */
-/**
- * @author Christian <c@ethdev.com>
- * @date 2015
- * Utilities to work with the AST.
- */
+// SPDX-License-Identifier: GPL-3.0
 
+#include <libsolidity/ast/AST.h>
 #include <libsolidity/ast/ASTUtils.h>
 
-using namespace std;
-using namespace dev;
-using namespace dev::solidity;
+#include <libsolutil/Algorithms.h>
 
-
-
-ASTNode const* LocationFinder::leastUpperBound()
+namespace solidity::frontend
 {
-	m_bestMatch = nullptr;
-	for (ASTNode const* rootNode: m_rootNodes)
-		rootNode->accept(*this);
 
-	return m_bestMatch;
+bool isConstantVariableRecursive(VariableDeclaration const& _varDecl)
+{
+	solAssert(_varDecl.isConstant(), "Constant variable expected");
+
+	auto referencedDeclaration = [&](Expression const* _e) -> VariableDeclaration const*
+	{
+		if (auto identifier = dynamic_cast<Identifier const*>(_e))
+			return dynamic_cast<VariableDeclaration const*>(identifier->annotation().referencedDeclaration);
+		else if (auto memberAccess = dynamic_cast<MemberAccess const*>(_e))
+			return dynamic_cast<VariableDeclaration const*>(memberAccess->annotation().referencedDeclaration);
+		return nullptr;
+	};
+
+	auto visitor = [&](VariableDeclaration const& _variable, util::CycleDetector<VariableDeclaration>& _cycleDetector, size_t _depth)
+	{
+		solAssert(_depth < 256, "Recursion depth limit reached");
+
+		if (auto referencedVarDecl = referencedDeclaration(_variable.value().get()))
+			if (referencedVarDecl->isConstant())
+				if (_cycleDetector.run(*referencedVarDecl))
+					return;
+	};
+
+	return util::CycleDetector<VariableDeclaration>(visitor).run(_varDecl);
 }
 
-bool LocationFinder::visitNode(const ASTNode& _node)
+VariableDeclaration const* rootConstVariableDeclaration(VariableDeclaration const& _varDecl)
 {
-	if (_node.location().contains(m_location))
+	solAssert(_varDecl.isConstant(), "Constant variable expected");
+	solAssert(!isConstantVariableRecursive(_varDecl), "Recursive declaration");
+
+	VariableDeclaration const* rootDecl = &_varDecl;
+	Identifier const* identifier;
+	while ((identifier = dynamic_cast<Identifier const*>(rootDecl->value().get())))
 	{
-		m_bestMatch = &_node;
-		return true;
+		auto referencedVarDecl = dynamic_cast<VariableDeclaration const*>(identifier->annotation().referencedDeclaration);
+		if (!referencedVarDecl || !referencedVarDecl->isConstant())
+			return nullptr;
+		rootDecl = referencedVarDecl;
 	}
-	return false;
+	return rootDecl;
+}
+
 }

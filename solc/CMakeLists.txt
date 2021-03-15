@@ -5,7 +5,7 @@ set(
 )
 
 add_executable(solc ${sources})
-target_link_libraries(solc PRIVATE solidity ${Boost_PROGRAM_OPTIONS_LIBRARIES})
+target_link_libraries(solc PRIVATE solidity Boost::boost Boost::program_options)
 
 include(GNUInstallDirs)
 install(TARGETS solc DESTINATION "${CMAKE_INSTALL_BINDIR}")
@@ -19,5 +19,10 @@ if(SOLC_LINK_STATIC AND UNIX AND NOT APPLE)
 		LINK_FLAGS -static
 		LINK_SEARCH_START_STATIC ON
 		LINK_SEARCH_END_STATIC ON
+	)
+elseif(SOLC_STATIC_STDLIBS AND UNIX AND NOT APPLE)
+	set_target_properties(
+		solc PROPERTIES
+		LINK_FLAGS "-static-libgcc -static-libstdc++"
 	)
 endif()
