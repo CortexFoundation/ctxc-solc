@@ -58,7 +58,7 @@ void ExpressionCompiler::appendStateVariableInitialization(VariableDeclaration c
 {
 	if (!_varDecl.value())
 		return;
-	TypePointer type = _varDecl.value()->annotation().type;
+	Type const* type = _varDecl.value()->annotation().type;
 	solAssert(!!type, "Type information not available.");
 	CompilerContext::LocationSetter locationSetter(m_context, _varDecl);
 	_varDecl.value()->accept(*this);
@@ -111,7 +111,7 @@ void ExpressionCompiler::appendStateVariableAccessor(VariableDeclaration const& 
 		m_context << location.first << u256(location.second);
 	}
 
-	TypePointer returnType = _varDecl.annotation().type;
+	Type const* returnType = _varDecl.annotation().type;
 
 	for (size_t i = 0; i < paramTypes.size(); ++i)
 	{
@@ -214,7 +214,7 @@ void ExpressionCompiler::appendStateVariableAccessor(VariableDeclaration const& 
 					continue;
 			pair<u256, unsigned> const& offsets = structType->storageOffsetsOfMember(names[i]);
 			m_context << Instruction::DUP1 << u256(offsets.first) << Instruction::ADD << u256(offsets.second);
-			TypePointer memberType = structType->memberType(names[i]);
+			Type const* memberType = structType->memberType(names[i]);
 			StorageItem(m_context, *memberType).retrieveValue(SourceLocation(), true);
 			utils().convertType(*memberType, *returnTypes[i]);
 			utils().moveToStackTop(returnTypes[i]->sizeOnStack());
@@ -279,7 +279,7 @@ bool ExpressionCompiler::visit(Assignment const& _assignment)
 	_assignment.rightHandSide().accept(*this);
 	// Perform some conversion already. This will convert storage types to memory and literals
 	// to their actual type, but will not convert e.g. memory to storage.
-	TypePointer rightIntermediateType;
+	Type const* rightIntermediateType;
 	if (op != Token::Assign && TokenTraits::isShiftOp(binOp))
 		rightIntermediateType = _assignment.rightHandSide().annotation().type->mobileType();
 	else
@@ -474,7 +474,7 @@ bool ExpressionCompiler::visit(BinaryOperation const& _binaryOperation)
 	Expression const& leftExpression = _binaryOperation.leftExpression();
 	Expression const& rightExpression = _binaryOperation.rightExpression();
 	solAssert(!!_binaryOperation.annotation().commonType, "");
-	TypePointer const& commonType = _binaryOperation.annotation().commonType;
+	Type const* commonType = _binaryOperation.annotation().commonType;
 	Token const c_op = _binaryOperation.getOperator();
 
 	if (c_op == Token::And || c_op == Token::Or) // special case: short-circuiting
@@ -485,8 +485,8 @@ bool ExpressionCompiler::visit(BinaryOperation const& _binaryOperation)
 	{
 		bool cleanupNeeded = cleanupNeededForOp(commonType->category(), c_op, m_context.arithmetic());
 
-		TypePointer leftTargetType = commonType;
-		TypePointer rightTargetType =
+		Type const* leftTargetType = commonType;
+		Type const* rightTargetType =
 			TokenTraits::isShiftOp(c_op) || c_op == Token::Exp ?
 			rightExpression.annotation().type->mobileType() :
 			commonType;
@@ -818,7 +818,7 @@ bool ExpressionCompiler::visit(FunctionCall const& _functionCall)
 		{
 			solAssert(arguments.size() == 1, "");
 			solAssert(!function.padArguments(), "");
-			TypePointer const& argType = arguments.front()->annotation().type;
+			Type const* argType = arguments.front()->annotation().type;
 			solAssert(argType, "");
 			arguments.front()->accept(*this);
 			if (auto const* stringLiteral = dynamic_cast<StringLiteralType const*>(argType))
@@ -993,13 +993,13 @@ bool ExpressionCompiler::visit(FunctionCall const& _functionCall)
 			{
 				solAssert(function.parameterTypes().size() == 1, "");
 				solAssert(!!function.parameterTypes()[0], "");
-				TypePointer paramType = function.parameterTypes()[0];
+				Type const* paramType = function.parameterTypes()[0];
 				ArrayType const* arrayType = dynamic_cast<ArrayType const*>(function.selfType());
 				solAssert(arrayType, "");
 
 				// stack: ArrayReference
 				arguments[0]->accept(*this);
-				TypePointer const& argType = arguments[0]->annotation().type;
+				Type const* argType = arguments[0]->annotation().type;
 				// stack: ArrayReference argValue
 				utils().moveToStackTop(argType->sizeOnStack(), 1);
 				// stack: argValue ArrayReference
@@ -1012,7 +1012,7 @@ bool ExpressionCompiler::visit(FunctionCall const& _functionCall)
 				// stack: argValue storageSlot slotOffset
 				utils().moveToStackTop(2, argType->sizeOnStack());
 				// stack: storageSlot slotOffset argValue
-				TypePointer type = arguments[0]->annotation().type->closestTemporaryType(arrayType->baseType());
+				Type const* type = arguments[0]->annotation().type->closestTemporaryType(arrayType->baseType());
 				solAssert(type, "");
 				utils().convertType(*argType, *type);
 				utils().moveToStackTop(1 + type->sizeOnStack());
@@ -1033,6 +1033,42 @@ bool ExpressionCompiler::visit(FunctionCall const& _functionCall)
 			ArrayType const* arrayType = dynamic_cast<ArrayType const*>(function.selfType());
 			solAssert(arrayType && arrayType->dataStoredIn(DataLocation::Storage), "");
 			ArrayUtils(m_context).popStorageArrayElement(*arrayType);
+			break;
+		}
+		case FunctionType::Kind::BytesConcat:
+		{
+			_functionCall.expression().accept(*this);
+			vector<Type const*> argumentTypes;
+			vector<Type const*> targetTypes;
+			for (auto const& argument: arguments)
+			{
+				argument->accept(*this);
+				solAssert(argument->annotation().type, "");
+				argumentTypes.emplace_back(argument->annotation().type);
+				if (argument->annotation().type->category() == Type::Category::FixedBytes)
+					targetTypes.emplace_back(argument->annotation().type);
+				else if (
+					auto const* literalType = dynamic_cast<StringLiteralType const*>(argument->annotation().type);
+					literalType && literalType->value().size() <= 32
+				)
+					targetTypes.emplace_back(TypeProvider::fixedBytes(static_cast<unsigned>(literalType->value().size())));
+				else
+				{
+					solAssert(argument->annotation().type->isImplicitlyConvertibleTo(*TypeProvider::bytesMemory()), "");
+					targetTypes.emplace_back(TypeProvider::bytesMemory());
+				}
+			}
+			utils().fetchFreeMemoryPointer();
+			// stack: <arg1> <arg2> ... <argn> <free mem>
+			m_context << u256(32) << Instruction::ADD;
+			utils().packedEncode(argumentTypes, targetTypes);
+			utils().fetchFreeMemoryPointer();
+			m_context.appendInlineAssembly(R"({
+				mstore(mem_ptr, sub(sub(mem_end, mem_ptr), 0x20))
+			})", {"mem_end", "mem_ptr"});
+			m_context << Instruction::SWAP1;
+			utils().storeFreeMemoryPointer();
+
 			break;
 		}
 		case FunctionType::Kind::ObjectCreation:
@@ -1184,9 +1220,9 @@ bool ExpressionCompiler::visit(FunctionCall const& _functionCall)
 			{
 				// stack: <selector> <memory pointer>
 				solAssert(arguments.size() >= 1, "");
-				TypePointer const& selectorType = arguments[0]->annotation().type;
+				Type const* selectorType = arguments[0]->annotation().type;
 				utils().moveIntoStack(selectorType->sizeOnStack());
-				TypePointer dataOnStack = selectorType;
+				Type const* dataOnStack = selectorType;
 				// stack: <memory pointer> <selector>
 				if (function.kind() == FunctionType::Kind::ABIEncodeWithSignature)
 				{
@@ -1234,7 +1270,7 @@ bool ExpressionCompiler::visit(FunctionCall const& _functionCall)
 		case FunctionType::Kind::ABIDecode:
 		{
 			arguments.front()->accept(*this);
-			TypePointer firstArgType = arguments.front()->annotation().type;
+			Type const* firstArgType = arguments.front()->annotation().type;
 			TypePointers targetTypes;
 			if (TupleType const* targetTupleType = dynamic_cast<TupleType const*>(_functionCall.annotation().type))
 				targetTypes = targetTupleType->components();
@@ -1666,7 +1702,7 @@ bool ExpressionCompiler::visit(MemberAccess const& _memberAccess)
 			solAssert(false, "Blockhash has been removed.");
 		else if (member == "creationCode" || member == "runtimeCode")
 		{
-			TypePointer arg = dynamic_cast<MagicType const&>(*_memberAccess.expression().annotation().type).typeArgument();
+			Type const* arg = dynamic_cast<MagicType const&>(*_memberAccess.expression().annotation().type).typeArgument();
 			auto const& contractType = dynamic_cast<ContractType const&>(*arg);
 			solAssert(!contractType.isSuper(), "");
 			ContractDefinition const& contract = contractType.contractDefinition();
@@ -1685,7 +1721,7 @@ bool ExpressionCompiler::visit(MemberAccess const& _memberAccess)
 		}
 		else if (member == "name")
 		{
-			TypePointer arg = dynamic_cast<MagicType const&>(*_memberAccess.expression().annotation().type).typeArgument();
+			Type const* arg = dynamic_cast<MagicType const&>(*_memberAccess.expression().annotation().type).typeArgument();
 			auto const& contractType = dynamic_cast<ContractType const&>(*arg);
 			ContractDefinition const& contract = contractType.isSuper() ?
 				*contractType.contractDefinition().superContract(m_context.mostDerivedContract()) :
@@ -1699,7 +1735,7 @@ bool ExpressionCompiler::visit(MemberAccess const& _memberAccess)
 		}
 		else if (member == "interfaceId")
 		{
-			TypePointer arg = dynamic_cast<MagicType const&>(*_memberAccess.expression().annotation().type).typeArgument();
+			Type const* arg = dynamic_cast<MagicType const&>(*_memberAccess.expression().annotation().type).typeArgument();
 			ContractDefinition const& contract = dynamic_cast<ContractType const&>(*arg).contractDefinition();
 			m_context << (u256{contract.interfaceId()} << (256 - 32));
 		}
@@ -1723,7 +1759,7 @@ bool ExpressionCompiler::visit(MemberAccess const& _memberAccess)
 	case Type::Category::Struct:
 	{
 		StructType const& type = dynamic_cast<StructType const&>(*_memberAccess.expression().annotation().type);
-		TypePointer const& memberType = _memberAccess.annotation().type;
+		Type const* memberType = _memberAccess.annotation().type;
 		switch (type.location())
 		{
 		case DataLocation::Storage:
@@ -1879,7 +1915,7 @@ bool ExpressionCompiler::visit(IndexAccess const& _indexAccess)
 		case Type::Category::Mapping:
 		{
 			// stack: storage_base_ref
-			TypePointer keyType = dynamic_cast<MappingType const&>(baseType).keyType();
+			Type const* keyType = dynamic_cast<MappingType const&>(baseType).keyType();
 			solAssert(_indexAccess.indexExpression(), "Index expression expected.");
 			if (keyType->isDynamicallySized())
 			{
@@ -2090,7 +2126,7 @@ void ExpressionCompiler::endVisit(Identifier const& _identifier)
 void ExpressionCompiler::endVisit(Literal const& _literal)
 {
 	CompilerContext::LocationSetter locationSetter(m_context, _literal);
-	TypePointer type = _literal.annotation().type;
+	Type const* type = _literal.annotation().type;
 
 	switch (type->category())
 	{

@@ -57,10 +57,10 @@ public:
 	bool checkTypeRequirements(SourceUnit const& _source);
 
 	/// @returns the type of an expression and asserts that it is present.
-	TypePointer const& type(Expression const& _expression) const;
+	Type const* type(Expression const& _expression) const;
 	/// @returns the type of the given variable and throws if the type is not present
 	/// (this can happen for variables with non-explicit types before their types are resolved)
-	TypePointer const& type(VariableDeclaration const& _variable) const;
+	Type const* type(VariableDeclaration const& _variable) const;
 
 	static bool typeSupportedByOldABIEncoder(Type const& _type, bool _isLibraryCall);
 
@@ -85,7 +85,7 @@ private:
 	TypePointers typeCheckMetaTypeFunctionAndRetrieveReturnType(FunctionCall const& _functionCall);
 
 	/// Performs type checks and determines result types for type conversion FunctionCall nodes.
-	TypePointer typeCheckTypeConversionAndRetrieveReturnType(
+	Type const* typeCheckTypeConversionAndRetrieveReturnType(
 		FunctionCall const& _functionCall
 	);
 
@@ -109,6 +109,12 @@ private:
 	void typeCheckABIEncodeFunctions(
 		FunctionCall const& _functionCall,
 		FunctionTypePointer _functionType
+	);
+
+	/// Performs general checks and checks specific to bytes concat function call
+	void typeCheckBytesConcatFunction(
+		FunctionCall const& _functionCall,
+		FunctionType const* _functionType
 	);
 
 	void endVisit(InheritanceSpecifier const& _inheritance) override;

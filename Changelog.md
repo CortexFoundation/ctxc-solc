@@ -1,13 +1,31 @@
-### 0.8.3 (unreleased)
+### 0.8.4 (unreleased)
 
 Language Features:
+ * Possibility to use ``bytes.concat`` with variable number of ``bytes`` and ``bytesNN`` arguments which behaves as a restricted version of `abi.encodePacked` with a more descriptive name.
 
+Compiler Features:
+ * Low-Level Inliner: Inline ordinary jumps to small blocks and jumps to small blocks that terminate.
+
+
+Bugfixes:
+ * AST Output: Fix ``kind`` field of ``ModifierInvocation`` for base constructor calls.
+ * SMTChecker: Fix false positive and false negative on ``push`` as LHS of a compound assignment.
+ * SMTChecker: Fix internal error on public getter returning dynamic data on older EVM versions where these are not available.
+
+
+AST Changes:
+
+
+
+### 0.8.3 (2021-03-23)
+
+Important Bugfixes:
+ * Optimizer: Fix bug on incorrect caching of Keccak-256 hashes.
 
 Compiler Features:
  * Command Line Interface: Drop experimental support for ``--machine evm15``.
  * Optimizer: Try to move ``and`` with constant inside ``or`` to improve storage writes of small types.
  * Optimizer: Replace multiplications and divisions with powers of two by shifts.
-
 
 Bugfixes:
  * AST Import: For constructors, a public visibility is ignored during importing.
@@ -22,7 +40,6 @@ Bugfixes:
 
 AST Changes:
  * ModifierInvocation: Add ``kind`` field which can be ``modifierInvocation`` or ``baseConstructorSpecifier``.
-
 
 
 ### 0.8.2 (2021-03-02)
